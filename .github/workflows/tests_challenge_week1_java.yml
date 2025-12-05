@@ -1,0 +1,165 @@
+name: Challenge Week 01 - Java Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'challenges/week1/**/solution.java'
+      - 'challenges/week1/**/Solution.java'
+
+jobs:
+  test-java:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Find Java solution file
+        id: find-file
+        run: |
+          for file in challenges/week1/*/solution.java challenges/week1/*/Solution.java; do
+            if [[ -f "$file" ]]; then
+              echo "solution-path=$file" >> $GITHUB_OUTPUT
+              break
+            fi
+          done
+
+      - name: Run Java Tests
+        env:
+          PRIVATE_TEST_DATA: ${{ secrets.WEEK_01_PRIVATE_TESTS }}
+          CHALLENGE_FILE_PATH: ${{ steps.find-file.outputs.solution-path }}
+          TARGET_FUNCTION_NAME: "countVulnerableSections"
+        run: |
+          # Crear directorio temporal para compilación
+          mkdir -p temp_java
+          
+          # Leer el archivo de solución y remover la declaración de package
+          sed '/^package /d' "$CHALLENGE_FILE_PATH" > temp_java/Solution.java
+          
+          # Crear clase de test que ejecuta los casos privados
+          cat > temp_java/TestRunner.java << 'EOF'
+          import java.util.*;
+          import java.lang.reflect.*;
+          import com.fasterxml.jackson.databind.*;
+          
+          public class TestRunner {
+              public static void main(String[] args) {
+                  try {
+                      String privateTestData = System.getenv("PRIVATE_TEST_DATA");
+                      String targetFunctionName = System.getenv("TARGET_FUNCTION_NAME");
+                      
+                      if (privateTestData == null) {
+                          System.out.println("Error: SECRETOS DE PRUEBA NO ENCONTRADOS.");
+                          System.exit(1);
+                      }
+                      
+                      // Parsear JSON de tests
+                      ObjectMapper mapper = new ObjectMapper();
+                      JsonNode tests = mapper.readTree(privateTestData);
+                      
+                      // Cargar la clase de solución
+                      Class<?> solutionClass = Solution.class;
+                      Object solutionInstance = null;
+                      
+                      // Intentar crear instancia - buscar métodos estáticos primero
+                      Method targetMethod = null;
+                      boolean isStaticMethod = false;
+                      
+                      for (Method method : solutionClass.getDeclaredMethods()) {
+                          if (method.getName().equals(targetFunctionName)) {
+                              targetMethod = method;
+                              isStaticMethod = java.lang.reflect.Modifier.isStatic(method.getModifiers());
+                              break;
+                          }
+                      }
+                      
+                      if (targetMethod == null) {
+                          System.out.println("Error: No se encontró la función \"" + targetFunctionName + "\".");
+                          System.exit(1);
+                      }
+                      
+                      // Solo crear instancia si el método no es estático
+                      if (!isStaticMethod) {
+                          solutionInstance = solutionClass.getDeclaredConstructor().newInstance();
+                      }
+                      
+                      boolean allPassed = true;
+                      System.out.println("--- Ejecutando Pruebas Privadas ---");
+                      
+                      for (int i = 0; i < tests.size(); i++) {
+                          JsonNode testCase = tests.get(i);
+                          
+                          try {
+                              // Extraer parámetros del test
+                              JsonNode stabilitiesNode = testCase.get("stabilities");
+                              int securityThreshold = testCase.get("security_threshold").asInt();
+                              int expected = testCase.get("expected").asInt();
+                              
+                              // Convertir array de stabilities
+                              int[] stabilities = new int[stabilitiesNode.size()];
+                              for (int j = 0; j < stabilitiesNode.size(); j++) {
+                                  stabilities[j] = stabilitiesNode.get(j).asInt();
+                              }
+                              
+                              // Ejecutar el método
+                              Object result;
+                              if (isStaticMethod) {
+                                  result = targetMethod.invoke(null, stabilities, securityThreshold);
+                              } else {
+                                  result = targetMethod.invoke(solutionInstance, stabilities, securityThreshold);
+                              }
+                              int resultInt = (Integer) result;
+                              
+                              if (resultInt == expected) {
+                                  System.out.println("Prueba Privada " + (i+1) + ": ✅ PASSED");
+                              } else {
+                                  System.out.println("Prueba Privada " + (i+1) + ": ❌ FAILED - Se esperaba " + expected + ", se obtuvo " + resultInt);
+                                  allPassed = false;
+                              }
+                          } catch (Exception e) {
+                              System.out.println("Prueba Privada " + (i+1) + ": ❌ ERROR durante la ejecución - " + e.getMessage());
+                              allPassed = false;
+                          }
+                      }
+                      
+                      System.out.println("----------------------------------");
+                      
+                      if (allPassed) {
+                          System.out.println("¡Todas las pruebas privadas han pasado! 🎉");
+                          System.exit(0);
+                      } else {
+                          System.out.println("Algunas pruebas privadas han fallado.");
+                          System.exit(1);
+                      }
+                      
+                  } catch (Exception e) {
+                      System.out.println("Error fatal: " + e.getMessage());
+                      e.printStackTrace();
+                      System.exit(1);
+                  }
+              }
+          }
+          EOF
+          
+          # Descargar Jackson para parsing JSON
+          curl -s -o temp_java/jackson-core.jar https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-core/2.15.2/jackson-core-2.15.2.jar
+          curl -s -o temp_java/jackson-databind.jar https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.15.2/jackson-databind-2.15.2.jar
+          curl -s -o temp_java/jackson-annotations.jar https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.15.2/jackson-annotations-2.15.2.jar
+          
+          # Compilar
+          cd temp_java
+          javac -cp ".:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" *.java
+          
+          # Ejecutar tests
+          java -cp ".:jackson-core.jar:jackson-databind.jar:jackson-annotations.jar" TestRunner
+          
+          # Limpiar
+          cd ..
+          rm -rf temp_java

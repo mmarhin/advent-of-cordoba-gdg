@@ -1,0 +1,114 @@
+name: Challenge Week 01 - Python Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'challenges/week1/**/solution.py'
+
+jobs:
+  test-python:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Find Python solution file
+        id: find-file
+        run: |
+          for file in challenges/week1/*/solution.py; do
+            if [[ -f "$file" ]]; then
+              echo "solution-path=$file" >> $GITHUB_OUTPUT
+              break
+            fi
+          done
+
+      - name: Run Python Tests
+        env:
+          PRIVATE_TEST_DATA: ${{ secrets.WEEK_01_PRIVATE_TESTS }}
+          CHALLENGE_FILE_PATH: ${{ steps.find-file.outputs.solution-path }}
+          TARGET_FUNCTION_NAME: "count_vulnerable_sections"
+        run: |
+          python - << 'EOF'
+          import json
+          import os
+          import sys
+          import importlib.util
+
+          def run_challenge_tests():
+              challenge_path = os.environ.get('CHALLENGE_FILE_PATH')
+              if not challenge_path:
+                  print('Error: La ruta del archivo del desafío (CHALLENGE_FILE_PATH) no fue proporcionada o está vacía.')
+                  sys.exit(1)
+
+              target_function_name = os.environ.get('TARGET_FUNCTION_NAME')
+              if not target_function_name:
+                  print('Error: El nombre de la función (TARGET_FUNCTION_NAME) no fue proporcionado o está vacío.')
+                  sys.exit(1)
+
+              module_name = 'user_solution_module_' + os.path.basename(challenge_path).replace('.', '_')
+              spec = importlib.util.spec_from_file_location(module_name, challenge_path)
+              if spec is None:
+                  print(f'Error: No se pudo encontrar el archivo del desafío en {challenge_path}')
+                  sys.exit(1)
+
+              user_solution = importlib.util.module_from_spec(spec)
+              try:
+                  spec.loader.exec_module(user_solution)
+              except Exception as e:
+                  print(f'Error al ejecutar el módulo del usuario {challenge_path}: {e}')
+                  sys.exit(1)
+
+              private_test_data_json = os.environ.get('PRIVATE_TEST_DATA')
+              if not private_test_data_json:
+                  print('Error: SECRETOS DE PRUEBA NO ENCONTRADOS.')
+                  sys.exit(1)
+
+              try:
+                  tests = json.loads(private_test_data_json)
+              except json.JSONDecodeError as e:
+                  print(f'Error: El contenido del secreto PRIVATE_TEST_DATA no es JSON válido: {e}')
+                  sys.exit(1)
+
+              all_passed = True
+              print('--- Ejecutando Pruebas Privadas ---')
+
+              for i, test_case in enumerate(tests):
+                  stabilities = test_case.get('stabilities', [])
+                  security_threshold = test_case.get('security_threshold', 0)
+                  expected = test_case.get('expected', None)
+
+                  try:
+                      func = getattr(user_solution, target_function_name, None)
+                      if func is None:
+                          print(f'Prueba Privada {i+1}: ❌ FAILED - No se encontró la función "{target_function_name}".')
+                          all_passed = False
+                          continue
+
+                      result = func(stabilities, security_threshold)
+                      if result == expected:
+                          print(f'Prueba Privada {i+1}: ✅ PASSED')
+                      else:
+                          print(f'Prueba Privada {i+1}: ❌ FAILED - Se esperaba {expected}, se obtuvo {result}')
+                          all_passed = False
+                  except Exception as e:
+                      print(f'Prueba Privada {i+1}: ❌ ERROR durante la ejecución - {e}')
+                      all_passed = False
+
+              print('----------------------------------')
+
+              if all_passed:
+                  print('¡Todas las pruebas privadas han pasado! 🎉')
+                  sys.exit(0)
+              else:
+                  print('Algunas pruebas privadas han fallado.')
+                  sys.exit(1)
+
+          run_challenge_tests()
+          EOF
