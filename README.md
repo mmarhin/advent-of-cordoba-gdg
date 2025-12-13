@@ -14,12 +14,12 @@ Challenges will **not** be released daily. We're keeping it relaxed, _a la cordo
 
 A new challenge will be published **once per week** on the following dates:
 
-|      Challenge       | Release Date | Theme Hint               |
-| :------------------: | :----------: | :----------------------- |
-| **Week 1 Challenge** | 5th December | _Roman Bridge Stability_ |
-| **Week 2 Challenge** |     ...      | TBA                      |
-| **Week 3 Challenge** |     ...      | TBA                      |
-| **Week 4 Challenge** |     ...      | TBA                      |
+|      Challenge       | Release Date  | Theme Hint                                             |
+| :------------------: | :-----------: | :----------------------------------------------------- |
+| **Week 1 Challenge** | 5th December  | _Roman Bridge Stability_                               |
+| **Week 2 Challenge** | 12nd December | _Christmas market in the site of the Mosque-Cathedral_ |
+| **Week 3 Challenge** |      ...      | TBA                                                    |
+| **Week 4 Challenge** |      ...      | TBA                                                    |
 
 ## 💻 Supported Languages
 
