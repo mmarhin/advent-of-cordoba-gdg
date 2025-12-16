@@ -1,7 +1,7 @@
 name: Challenge Week 01 - Python Tests
 
 on:
-  pull_request:
+  pull_request_target:
     branches:
       - main
     paths:
@@ -10,9 +10,12 @@ on:
 jobs:
   test-python:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
+      - name: Checkout PR code
         uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -44,25 +47,12 @@ jobs:
           def run_challenge_tests():
               challenge_path = os.environ.get('CHALLENGE_FILE_PATH')
               if not challenge_path:
-                  print('Error: La ruta del archivo del desafío (CHALLENGE_FILE_PATH) no fue proporcionada o está vacía.')
+                  print('Error: CHALLENGE_FILE_PATH no proporcionado.')
                   sys.exit(1)
 
               target_function_name = os.environ.get('TARGET_FUNCTION_NAME')
               if not target_function_name:
-                  print('Error: El nombre de la función (TARGET_FUNCTION_NAME) no fue proporcionado o está vacío.')
-                  sys.exit(1)
-
-              module_name = 'user_solution_module_' + os.path.basename(challenge_path).replace('.', '_')
-              spec = importlib.util.spec_from_file_location(module_name, challenge_path)
-              if spec is None:
-                  print(f'Error: No se pudo encontrar el archivo del desafío en {challenge_path}')
-                  sys.exit(1)
-
-              user_solution = importlib.util.module_from_spec(spec)
-              try:
-                  spec.loader.exec_module(user_solution)
-              except Exception as e:
-                  print(f'Error al ejecutar el módulo del usuario {challenge_path}: {e}')
+                  print('Error: TARGET_FUNCTION_NAME no proporcionado.')
                   sys.exit(1)
 
               private_test_data_json = os.environ.get('PRIVATE_TEST_DATA')
@@ -70,35 +60,45 @@ jobs:
                   print('Error: SECRETOS DE PRUEBA NO ENCONTRADOS.')
                   sys.exit(1)
 
+              module_name = 'user_solution_module'
+              spec = importlib.util.spec_from_file_location(module_name, challenge_path)
+              user_solution = importlib.util.module_from_spec(spec)
+
+              try:
+                  spec.loader.exec_module(user_solution)
+              except Exception as e:
+                  print(f'Error al ejecutar el módulo del usuario: {e}')
+                  sys.exit(1)
+
               try:
                   tests = json.loads(private_test_data_json)
               except json.JSONDecodeError as e:
-                  print(f'Error: El contenido del secreto PRIVATE_TEST_DATA no es JSON válido: {e}')
+                  print(f'Error: PRIVATE_TEST_DATA no es JSON válido: {e}')
                   sys.exit(1)
 
-              all_passed = True
+              func = getattr(user_solution, target_function_name, None)
+              if func is None:
+                  print(f'Error: No se encontró la función "{target_function_name}".')
+                  sys.exit(1)
+
               print('--- Ejecutando Pruebas Privadas ---')
+              all_passed = True
 
               for i, test_case in enumerate(tests):
-                  stabilities = test_case.get('stabilities', [])
-                  security_threshold = test_case.get('security_threshold', 0)
-                  expected = test_case.get('expected', None)
-
                   try:
-                      func = getattr(user_solution, target_function_name, None)
-                      if func is None:
-                          print(f'Prueba Privada {i+1}: ❌ FAILED - No se encontró la función "{target_function_name}".')
-                          all_passed = False
-                          continue
+                      result = func(
+                          test_case.get('stabilities', []),
+                          test_case.get('security_threshold', 0)
+                      )
+                      expected = test_case.get('expected')
 
-                      result = func(stabilities, security_threshold)
                       if result == expected:
                           print(f'Prueba Privada {i+1}: ✅ PASSED')
                       else:
                           print(f'Prueba Privada {i+1}: ❌ FAILED - Se esperaba {expected}, se obtuvo {result}')
                           all_passed = False
                   except Exception as e:
-                      print(f'Prueba Privada {i+1}: ❌ ERROR durante la ejecución - {e}')
+                      print(f'Prueba Privada {i+1}: ❌ ERROR - {e}')
                       all_passed = False
 
               print('----------------------------------')
