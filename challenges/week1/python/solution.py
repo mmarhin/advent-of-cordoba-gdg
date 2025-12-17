@@ -12,4 +12,22 @@ def count_vulnerable_sections(stabilities: list[int], security_threshold: int) -
         int: The total number of vulnerable sections found.
     """
     # TODO: Write your code here
-    return 2
+    if not stabilities:
+        return 0
+    
+    sections = 0
+    in_vulnerable_section = False
+    
+    for stability in stabilities:
+        is_vulnerable = stability < security_threshold
+        
+        if is_vulnerable:
+            if not in_vulnerable_section:
+                # Starting a new vulnerable section
+                sections += 1
+                in_vulnerable_section = True
+        else:
+            # Stable voussoir - ends any current vulnerable section
+            in_vulnerable_section = False
+    
+    return sections
