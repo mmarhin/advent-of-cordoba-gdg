@@ -78,4 +78,5 @@ def classify_arch(arch: list[list[int]]) -> str:
         if current_matches > max_matches:
             max_matches = current_matches
             best_match = name
+            
     return best_match
